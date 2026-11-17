@@ -1,0 +1,22 @@
+<!doctype html><meta charset=utf-8><title>Smoke Test Page</title>
+<style>body{margin:0;background:#111;color:#eee;font:14px sans-serif} .box{position:absolute;width:480px;height:270px}
+video{width:100%;height:100%;display:block;background:#000}
+#panel{position:fixed;left:520px;top:300px;width:200px;height:150px;background:#333;z-index:10}</style>
+<div class=box style="left:20px;top:20px"><video id=file src="file.webm" muted loop playsinline></video>
+  <button class=vjs-fullscreen-control aria-label=Fullscreen style="position:absolute;right:6px;bottom:6px">⛶</button></div>
+<div class=box style="left:520px;top:20px"><video id=mse muted loop playsinline></video></div>
+<div class=box style="left:520px;top:340px"><video id=covered src="file.webm" muted loop playsinline></video></div>
+<div id=panel></div>
+<script>
+const v = document.getElementById('mse');
+const ms = new MediaSource();
+v.src = URL.createObjectURL(ms);
+ms.addEventListener('sourceopen', async () => {
+  const sb = ms.addSourceBuffer('video/webm; codecs="vp8"');
+  sb.appendBuffer(await (await fetch('stream.webm')).arrayBuffer());
+  sb.addEventListener('updateend', () => { ms.endOfStream(); window.mseReady = true; }, { once: true });
+});
+for (const el of document.querySelectorAll('video')) el.play().catch(() => {});
+// Stand-in for a site player's own fullscreen control.
+document.querySelector('.vjs-fullscreen-control').addEventListener('click', (e) => e.target.parentElement.requestFullscreen());
+</script>
