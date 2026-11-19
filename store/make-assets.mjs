@@ -1,5 +1,6 @@
 // Builds the Chrome Web Store images into store/images: four 1280×800 screenshots, the 440×280 small promo
-// tile and the 1400×560 marquee. The extension's UI is captured live from headless Chromium, then laid out.
+// tile and the 1400×560 marquee, plus web-*.webp shots for the landing page (index.html).
+// The extension's UI is captured live from headless Chromium, then laid out.
 // Usage: node store/make-assets.mjs   (needs ffmpeg with libvpx, python3 with Pillow, and Chromium as in test/smoke.mjs)
 import { spawn, execFileSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -187,7 +188,8 @@ async function openTab(url, width = 1280, height = 800, scale = 2) {
       await sleep(120);
     },
     shot: async (file, clip) => {
-      const { data } = await send('Page.captureScreenshot', { format: 'png', ...(clip ? { clip: { ...clip, scale: 1 } } : {}), captureBeyondViewport: !!clip }, sessionId);
+      const format = file.endsWith('.webp') ? 'webp' : 'png';
+      const { data } = await send('Page.captureScreenshot', { format, quality: 90, ...(clip ? { clip: { ...clip, scale: 1 } } : {}), captureBeyondViewport: !!clip }, sessionId);
       fs.writeFileSync(file, Buffer.from(data, 'base64'));
     },
     front: () => send('Target.activateTarget', { targetId }),
@@ -221,6 +223,7 @@ await watch.move(player.x + 300, player.y + 200);
 for (let i = 0; i < 3; i++) await watch.key(']', 'BracketRight', 221);
 await sleep(250);
 await watch.shot(`${SITE}/cap-speed.png`, sceneClip);
+await watch.shot(`${OUT}/web-speed.webp`, { x: player.x - 24, y: 0, width: player.width + 48, height: player.y + player.height + 12 });
 
 step('speed captured');
 // 2. frame: pause, step a frame, save it
@@ -230,6 +233,7 @@ await watch.key('.', 'Period', 190);
 await watch.key('s', 'KeyS', 83, 1);
 await sleep(350);
 await watch.shot(`${SITE}/cap-frame.png`, sceneClip);
+await watch.shot(`${OUT}/web-frame.webp`, { x: player.x - 24, y: player.y - 24, width: 560, height: 350 });
 await watch.eval(`document.getElementById('v').play()`);
 
 step('frame captured');
@@ -318,16 +322,27 @@ const layouts = {
     ${crop('cap-speed.png', marqueeCrop, 760, 590, 46)}`,
 };
 
+// Landing page shots: no headlines, at 2× for sharp screens.
+const web = (body, bg) => `<!doctype html><meta charset=utf-8><style>${STYLE} body { width:1280px; height:800px; position:relative; ${bg ? `background:${bg};` : ''} }
+  .card { box-shadow:0 18px 50px rgba(0,0,0,.35), 0 0 0 1px rgba(0,0,0,.08); }</style>${body}`;
+layouts['web-popout'] = web(`<img src="cap-read.png" style="position:absolute; inset:0; width:1280px">
+  <div class=card style="left:${1280 - 40 - 600}px; top:${800 - 40 - 338}px; width:600px"><img src="cap-pip.png"></div>`);
+layouts['web-options'] = web(`
+  <div class=card style="left:48px; top:48px; width:576px"><img src="cap-opt-sites.png"></div>
+  <div class=card style="left:48px; top:${48 + Math.round(sec('Site speeds').height * 576 / sec('Site speeds').width) + 24}px; width:576px"><img src="cap-opt-bar.png"></div>
+  <div class=card style="left:656px; top:48px; width:576px"><img src="cap-opt-keys.png"></div>`, '#e9ecf2');
+
 const sizes = { 'promo-small-440x280': [440, 280], 'marquee-1400x560': [1400, 560] };
 for (const [name, html] of Object.entries(layouts)) {
   fs.writeFileSync(`${SITE}/${name}.html`, html);
   const [w, h] = sizes[name] || [1280, 800];
-  const tab = await openTab(`http://127.0.0.1:${PORT}/${name}.html`, w, h, 1);
+  const isWeb = name.startsWith('web-');
+  const tab = await openTab(`http://127.0.0.1:${PORT}/${name}.html`, w, h, isWeb ? 2 : 1);
   await tab.waitFor(`[...document.images].every((i) => i.complete && i.naturalWidth > 0)`);
   await tab.eval(`document.fonts.ready.then(() => true)`);
-  await tab.shot(`${OUT}/${name}.png`);
+  await tab.shot(`${OUT}/${name}.${isWeb ? 'webp' : 'png'}`);
   await send('Target.closeTarget', { targetId: tab.targetId });
-  console.log(`${OUT}/${name}.png`);
+  console.log(`${OUT}/${name}.${isWeb ? 'webp' : 'png'}`);
 }
 ws.close();
 process.exit(0);

@@ -1,0 +1,874 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Video QoL</title>
+  <meta name="description" content="Speed control, frame-by-frame stepping, full-resolution screenshots and a pop-out player for videos on any site.">
+  <meta property="og:title" content="Video QoL: better controls for every video on the web">
+  <meta property="og:description" content="Speed up or slow down any video, step frame by frame, save the exact frame as a PNG, and keep watching in a pop-out player when you switch tabs.">
+  <meta property="og:image" content="https://spite.github.io/video-qol/store/images/marquee-1400x560.png">
+  <meta property="og:url" content="https://spite.github.io/video-qol/">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" type="image/png" sizes="32x32" href="icons/icon32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="icons/icon16.png">
+  <link rel="apple-touch-icon" href="icons/icon128.png">
+  <style>
+    :root {
+      --bg: #0e0f17;
+      --surface: #161826;
+      --surface-2: #1e2133;
+      --fg: #eef0f8;
+      --muted: #a3a8bd;
+      --border: #272a3d;
+      --accent: #3d63e6;
+      --accent-hover: #4d72f0;
+      --accent-text: #8fa8ff;
+      --on-accent: #ffffff;
+      --glow: rgba(91, 140, 255, 0.24);
+      --glow-2: rgba(200, 69, 122, 0.16);
+      --shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+      color-scheme: dark;
+    }
+
+    @media (prefers-color-scheme: light) {
+      :root:not([data-theme="dark"]) {
+        --bg: #ffffff;
+        --surface: #f6f7fb;
+        --surface-2: #eceef5;
+        --fg: #151826;
+        --muted: #5b6075;
+        --border: #e2e5ee;
+        --accent: #3550d8;
+        --accent-hover: #2d45c2;
+        --accent-text: #3550d8;
+        --glow: rgba(91, 140, 255, 0.16);
+        --glow-2: rgba(200, 69, 122, 0.08);
+        --shadow: 0 20px 50px rgba(20, 25, 60, 0.14);
+        color-scheme: light;
+      }
+    }
+
+    * { box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font: 17px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    img { display: block; max-width: 100%; height: auto; }
+
+    a { color: inherit; }
+
+    .wrap {
+      width: 100%;
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 0 16px;
+    }
+
+    @media (min-width: 720px) {
+      .wrap { padding: 0 32px; }
+    }
+
+    /* Header */
+
+    header.top {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: color-mix(in srgb, var(--bg) 85%, transparent);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .top .wrap {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      height: 64px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      font-size: 18px;
+      text-decoration: none;
+    }
+
+    .brand img { width: 32px; height: 32px; }
+
+    nav.links {
+      display: none;
+      gap: 24px;
+      margin-left: auto;
+      font-size: 15px;
+    }
+
+    nav.links a {
+      color: var(--muted);
+      text-decoration: none;
+    }
+
+    nav.links a:hover { color: var(--fg); }
+
+    @media (min-width: 820px) {
+      nav.links { display: flex; }
+    }
+
+    .top .cta { margin-left: auto; }
+
+    @media (min-width: 820px) {
+      .top .cta { margin-left: 8px; }
+    }
+
+    /* Buttons */
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      min-height: 44px;
+      padding: 0 22px;
+      border: 1px solid transparent;
+      border-radius: 22px;
+      font: inherit;
+      font-size: 16px;
+      font-weight: 600;
+      text-decoration: none;
+      white-space: nowrap;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: var(--on-accent);
+    }
+
+    .btn-primary:hover { background: var(--accent-hover); }
+
+    .btn-ghost {
+      border-color: var(--border);
+      color: var(--fg);
+      background: transparent;
+    }
+
+    .btn-ghost:hover { border-color: var(--muted); }
+
+    .btn-small {
+      min-height: 36px;
+      padding: 0 16px;
+      font-size: 14px;
+    }
+
+    .btn:focus-visible,
+    a:focus-visible,
+    button:focus-visible {
+      outline: 2px solid var(--accent-text);
+      outline-offset: 3px;
+    }
+
+    /* Hero */
+
+    .hero {
+      position: relative;
+      overflow: hidden;
+      padding: 72px 0 56px;
+    }
+
+    .hero::before,
+    .hero::after {
+      content: "";
+      position: absolute;
+      width: 70%;
+      aspect-ratio: 1;
+      pointer-events: none;
+    }
+
+    .hero::before {
+      inset: -25% auto auto -10%;
+      background: radial-gradient(closest-side, var(--glow), transparent);
+    }
+
+    .hero::after {
+      inset: auto -20% -45% auto;
+      background: radial-gradient(closest-side, var(--glow-2), transparent);
+    }
+
+    .hero .wrap {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      gap: 48px;
+      align-items: center;
+    }
+
+    @media (min-width: 960px) {
+      .hero { padding: 104px 0 88px; }
+      .hero .wrap { grid-template-columns: 1fr 1.15fr; }
+    }
+
+    .hero img.logo {
+      width: 72px;
+      height: 72px;
+      margin: -9px 0 24px -9px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(36px, 6vw, 60px);
+      line-height: 1.05;
+      letter-spacing: -0.02em;
+    }
+
+    .hero .lede {
+      margin: 20px 0 32px;
+      color: var(--muted);
+      font-size: clamp(17px, 2.2vw, 20px);
+      max-width: 34em;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .note {
+      margin-top: 16px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    /* Tabbed demo */
+
+    .demo {
+      margin: 0;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      overflow: hidden;
+      background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+
+    .demo-stage {
+      position: relative;
+      aspect-ratio: 16 / 10;
+      background: #000;
+    }
+
+    .demo-stage img {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: top left;
+      opacity: 0;
+      transition: opacity 0.35s;
+    }
+
+    .demo-stage img.on { opacity: 1; }
+
+    .demo-bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px 12px;
+      padding: 10px 12px 10px 16px;
+      border-top: 1px solid var(--border);
+      font-size: 14px;
+      color: var(--muted);
+    }
+
+    .tabs {
+      display: flex;
+      gap: 4px;
+    }
+
+    .tabs button {
+      min-height: 32px;
+      padding: 0 12px;
+      border: 0;
+      border-radius: 16px;
+      background: transparent;
+      color: var(--muted);
+      font: inherit;
+      font-weight: 600;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+
+    @media (max-width: 420px) {
+      .tabs button { padding: 0 9px; }
+    }
+
+    .tabs button:hover { color: var(--fg); }
+
+    .tabs button[aria-selected="true"] {
+      background: var(--surface-2);
+      color: var(--fg);
+    }
+
+    /* Sections */
+
+    section {
+      padding: 72px 0;
+      border-top: 1px solid var(--border);
+    }
+
+    h2 {
+      margin: 0 0 16px;
+      font-size: clamp(28px, 4vw, 40px);
+      line-height: 1.15;
+      letter-spacing: -0.015em;
+    }
+
+    .section-lede {
+      margin: 0 0 48px;
+      color: var(--muted);
+      font-size: 18px;
+      max-width: 40em;
+    }
+
+    .story p {
+      max-width: 40em;
+      margin: 0 0 16px;
+      font-size: clamp(18px, 2.2vw, 21px);
+      color: var(--muted);
+    }
+
+    .story p strong { color: var(--fg); }
+
+    /* Features */
+
+    .feature {
+      display: grid;
+      gap: 24px;
+      align-items: center;
+      margin-bottom: 72px;
+    }
+
+    @media (min-width: 880px) {
+      .feature {
+        grid-template-columns: 1fr 1.35fr;
+        gap: 56px;
+      }
+
+      .feature.flip { grid-template-columns: 1.35fr 1fr; }
+
+      .feature.flip .feature-text { order: 2; }
+    }
+
+    .feature h3 {
+      margin: 0 0 12px;
+      font-size: 24px;
+      line-height: 1.25;
+    }
+
+    .feature p {
+      margin: 0;
+      color: var(--muted);
+    }
+
+    .feature p + p { margin-top: 12px; }
+
+    .tag {
+      display: inline-block;
+      margin-bottom: 12px;
+      padding: 2px 10px;
+      border-radius: 10px;
+      background: color-mix(in srgb, var(--accent) 18%, transparent);
+      color: var(--accent-text);
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .shot {
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+      box-shadow: var(--shadow);
+    }
+
+    kbd {
+      display: inline-block;
+      min-width: 1.7em;
+      padding: 1px 6px;
+      border: 1px solid var(--border);
+      border-bottom-width: 2px;
+      border-radius: 5px;
+      background: var(--surface-2);
+      color: var(--fg);
+      font: 600 0.82em/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      text-align: center;
+    }
+
+    .grid3 {
+      display: grid;
+      gap: 16px;
+    }
+
+    @media (min-width: 720px) {
+      .grid3 { grid-template-columns: repeat(3, 1fr); }
+    }
+
+    .card {
+      padding: 24px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: var(--surface);
+    }
+
+    .card h3 {
+      margin: 0 0 8px;
+      font-size: 18px;
+    }
+
+    .card p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 15px;
+    }
+
+    .card p a { color: var(--accent-text); }
+
+    /* Shortcuts */
+
+    .keys {
+      display: grid;
+      gap: 0 48px;
+    }
+
+    @media (min-width: 760px) {
+      .keys { grid-template-columns: 1fr 1fr; }
+    }
+
+    .keys div {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      padding: 14px 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .keys span:first-child { color: var(--muted); }
+
+    .keys span:last-child { white-space: nowrap; }
+
+    .keys-note {
+      margin: 24px 0 0;
+      color: var(--muted);
+      font-size: 15px;
+    }
+
+    #privacy .card { background: transparent; }
+
+    /* Install */
+
+    .install {
+      display: grid;
+      gap: 16px;
+    }
+
+    @media (min-width: 760px) {
+      .install { grid-template-columns: 1fr 1fr; }
+    }
+
+    .install ol {
+      margin: 12px 0 0;
+      padding-left: 20px;
+      color: var(--muted);
+      font-size: 15px;
+    }
+
+    .install li + li { margin-top: 6px; }
+
+    .install code {
+      font: 0.9em ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      color: var(--fg);
+    }
+
+    .soon {
+      display: inline-block;
+      margin-top: 16px;
+      padding: 4px 12px;
+      border-radius: 12px;
+      background: var(--surface-2);
+      color: var(--muted);
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    /* FAQ */
+
+    details { border-bottom: 1px solid var(--border); }
+
+    details:first-of-type { border-top: 1px solid var(--border); }
+
+    summary {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 20px 0;
+      font-size: 18px;
+      font-weight: 600;
+      list-style: none;
+      cursor: pointer;
+    }
+
+    summary::-webkit-details-marker { display: none; }
+
+    summary::after {
+      content: "+";
+      flex: none;
+      color: var(--muted);
+      font-weight: 400;
+      transition: transform 0.2s;
+    }
+
+    details[open] summary::after { transform: rotate(45deg); }
+
+    details p {
+      margin: 0 0 20px;
+      color: var(--muted);
+      max-width: 44em;
+    }
+
+    details p a { color: var(--accent-text); }
+
+    /* Final CTA + footer */
+
+    .final { text-align: center; }
+
+    .final h2 { margin-bottom: 12px; }
+
+    .final .speed {
+      display: inline-block;
+      color: var(--accent-text);
+      font-variant-numeric: tabular-nums;
+      min-width: 3.2ch;
+      text-align: left;
+    }
+
+    .final .section-lede { margin: 0 auto 32px; }
+
+    .final .actions { justify-content: center; }
+
+    footer {
+      padding: 40px 0 56px;
+      border-top: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    footer .wrap {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px 24px;
+      justify-content: space-between;
+    }
+
+    footer a { color: var(--fg); text-decoration: none; }
+
+    footer a:hover { text-decoration: underline; }
+
+    footer .links { display: flex; flex-wrap: wrap; gap: 8px 20px; }
+
+    footer .disclaimer { flex-basis: 100%; }
+
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      .demo-stage img { transition: none; }
+    }
+  </style>
+</head>
+<body>
+  <header class="top">
+    <div class="wrap">
+      <a class="brand" href="#">
+        <img src="icons/icon48.png" alt="" width="32" height="32">
+        Video QoL
+      </a>
+      <nav class="links" aria-label="Sections">
+        <a href="#features">Features</a>
+        <a href="#shortcuts">Shortcuts</a>
+        <a href="#privacy">Privacy</a>
+        <a href="#faq">FAQ</a>
+        <a href="https://github.com/spite/video-qol">GitHub</a>
+      </nav>
+      <a class="btn btn-primary btn-small cta" href="#install">Install</a>
+    </div>
+  </header>
+
+  <main>
+    <div class="hero">
+      <div class="wrap">
+        <div>
+          <img class="logo" src="icons/icon128.png" alt="" width="90" height="90">
+          <h1>Better controls for every video on the web</h1>
+          <p class="lede">Speed up or slow down any video, step through it frame by frame, save the exact frame as a PNG, and keep watching in a pop-out player when you switch tabs. On any site, with the same keys.</p>
+          <div class="actions">
+            <a class="btn btn-primary" href="#install">Install, it's free</a>
+            <a class="btn btn-ghost" href="https://github.com/spite/video-qol">View on GitHub</a>
+          </div>
+          <p class="note">No tracking, no accounts, nothing leaves your browser.</p>
+        </div>
+
+        <figure class="demo" id="demo">
+          <div class="demo-stage">
+            <img class="on" data-tab="speed" src="store/images/web-speed.webp" alt="The Video QoL bar in the corner of a video, set to 1.75× speed" width="1824" height="1150">
+            <img data-tab="frames" src="store/images/web-frame.webp" alt="The bar after saving a frame: Saved 1280×720 frame" width="1120" height="700">
+            <img data-tab="popout" src="store/images/web-popout.webp" alt="The pop-out player floating over an article in another tab, with seek, volume and speed controls" width="2560" height="1600">
+            <img data-tab="options" src="store/images/web-options.webp" alt="The options page: speeds per site, hiding the bar, and keyboard shortcuts" width="2560" height="1600">
+          </div>
+          <figcaption class="demo-bar">
+            <span class="status" aria-live="polite">Hover any video for the bar</span>
+            <span class="tabs" role="tablist" aria-label="Demo">
+              <button role="tab" aria-selected="true" data-tab="speed">Speed</button>
+              <button role="tab" aria-selected="false" data-tab="frames">Frames</button>
+              <button role="tab" aria-selected="false" data-tab="popout">Pop-out</button>
+              <button role="tab" aria-selected="false" data-tab="options">Options</button>
+            </span>
+          </figcaption>
+        </figure>
+      </div>
+    </div>
+
+    <section class="story">
+      <div class="wrap">
+        <h2>Every player is different</h2>
+        <p>One site stops at 2×. Another hides its speed menu three clicks deep. Hardly any let you step one frame at a time, and none of them save the frame you're looking at.</p>
+        <p><strong>Video QoL puts the same small bar on every video,</strong> with the same keys everywhere, so you stop learning a new player on every site.</p>
+      </div>
+    </section>
+
+    <section id="features">
+      <div class="wrap">
+        <h2>Small controls, everywhere</h2>
+        <p class="section-lede">A bar that appears in the corner of the video you hover, and gets out of the way when you don't need it.</p>
+
+        <div class="feature">
+          <div class="feature-text">
+            <span class="tag">Speed</span>
+            <h3>Any speed, from 0.06× to 16×</h3>
+            <p>Press <kbd>[</kbd> and <kbd>]</kbd> to go slower or faster, and <kbd>\</kbd> to flip between 1× and your last speed. It goes well past most players' own limits.</p>
+            <p>Set a default speed and a speed for each site, and new videos start at it. If a site resets the speed on its own, it's put back.</p>
+          </div>
+          <div class="shot"><img src="store/images/web-speed.webp" alt="The bar on a video at 1.75× speed" width="1824" height="1150" loading="lazy"></div>
+        </div>
+
+        <div class="feature flip">
+          <div class="feature-text">
+            <span class="tag">Frames</span>
+            <h3>Step frame by frame, save the exact frame</h3>
+            <p>Pause and press <kbd>,</kbd> or <kbd>.</kbd> to move one frame at a time, at the video's real frame rate. <kbd>Alt</kbd>+<kbd>,</kbd> and <kbd>Alt</kbd>+<kbd>.</kbd> jump 5 seconds.</p>
+            <p><kbd>Alt</kbd>+<kbd>S</kbd> saves the current frame as a PNG at the video's full resolution, not the size it's shown at.</p>
+          </div>
+          <div class="shot"><img src="store/images/web-frame.webp" alt="The bar after saving a full-resolution frame" width="1120" height="700" loading="lazy"></div>
+        </div>
+
+        <div class="feature">
+          <div class="feature-text">
+            <span class="tag">Pop-out</span>
+            <h3>Keep watching while you do something else</h3>
+            <p>Arm a video and it floats in its own window when you switch tabs, then goes back when you return. Or pop it out right away with <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd>.</p>
+            <p>The window has its own controls: seek bar, volume, speed, screenshot, and fullscreen back in the tab. Subtitles on YouTube and Netflix come along too.</p>
+          </div>
+          <div class="shot"><img src="store/images/web-popout.webp" alt="The pop-out player over an article" width="2560" height="1600" loading="lazy"></div>
+        </div>
+
+        <div class="feature flip">
+          <div class="feature-text">
+            <span class="tag">Options</span>
+            <h3>Your speeds, your keys</h3>
+            <p>Speeds per site, sites whose main video pops out on its own, and a hidden bar wherever you'd rather just use the keys. Every shortcut can be changed or turned off.</p>
+            <p>Settings save as you type and sync with your Chrome profile.</p>
+          </div>
+          <div class="shot"><img src="store/images/web-options.webp" alt="The options page" width="2560" height="1600" loading="lazy"></div>
+        </div>
+
+        <div class="grid3">
+          <div class="card">
+            <h3>Downloads</h3>
+            <p>Save videos that play from a single file, named after the page. Streamed and protected video is left alone.</p>
+          </div>
+          <div class="card">
+            <h3>Stays out of the way</h3>
+            <p>The bar only shows on the video you hover, fades when you leave, and hides when a menu or popup covers the video.</p>
+          </div>
+          <div class="card">
+            <h3>Works where you watch</h3>
+            <p>In fullscreen, in embedded players, and on sites that rebuild their player as you go.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="shortcuts">
+      <div class="wrap">
+        <h2>The same keys on every site</h2>
+        <p class="section-lede">They act on the video you last hovered, or the biggest one on screen, and never while you're typing.</p>
+        <div class="keys">
+          <div><span>Slower / faster</span><span><kbd>[</kbd> <kbd>]</kbd></span></div>
+          <div><span>Back / forward 5 seconds</span><span><kbd>Alt</kbd>+<kbd>,</kbd> <kbd>Alt</kbd>+<kbd>.</kbd></span></div>
+          <div><span>Toggle 1× and your last speed</span><span><kbd>\</kbd></span></div>
+          <div><span>Save the current frame</span><span><kbd>Alt</kbd>+<kbd>S</kbd></span></div>
+          <div><span>Previous / next frame, while paused</span><span><kbd>,</kbd> <kbd>.</kbd></span></div>
+          <div><span>Pop out when switching tabs</span><span><kbd>Alt</kbd>+<kbd>P</kbd></span></div>
+          <div><span>Volume and mute, in the pop-out</span><span><kbd>↑</kbd> <kbd>↓</kbd> <kbd>M</kbd></span></div>
+          <div><span>Pop out now</span><span><kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd></span></div>
+        </div>
+        <p class="keys-note">Clashes with a site you use? Change any of them, or turn them off, in the options.</p>
+      </div>
+    </section>
+
+    <section id="privacy">
+      <div class="wrap">
+        <h2>Private by design</h2>
+        <p class="section-lede">Everything happens in your browser, on the page you're already watching.</p>
+        <div class="grid3">
+          <div class="card">
+            <h3>No servers</h3>
+            <p>Nothing is sent to the developer or anyone else. Downloads come from the same address the page already plays from.</p>
+          </div>
+          <div class="card">
+            <h3>No tracking</h3>
+            <p>No analytics, no accounts, no ads. Your settings stay in your browser and sync through Chrome if you use it.</p>
+          </div>
+          <div class="card">
+            <h3>Source on GitHub</h3>
+            <p>Small enough to read in an afternoon. <a href="https://github.com/spite/video-qol/blob/main/PRIVACY.md">Privacy policy</a> · <a href="https://github.com/spite/video-qol">Source</a></p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="faq">
+      <div class="wrap">
+        <h2>Questions</h2>
+        <details>
+          <summary>Does it work on YouTube and Netflix?</summary>
+          <p>Speed, frame stepping, the shortcuts and the pop-out player do. Downloads don't: those sites stream video in small pieces, so there's no single file to save, and Netflix's video is DRM-protected, so its frames can't be captured either.</p>
+        </details>
+        <details>
+          <summary>Why didn't the video pop out when I switched tabs?</summary>
+          <p>Chrome decides when a page may pop out on its own. The video has to be playing with sound, and the site needs Chrome's <strong>Automatic picture-in-picture</strong> permission, which Chrome grants by default only on sites where you often watch media. If nothing happens, open the site's settings from the address bar and set it to Allow.</p>
+        </details>
+        <details>
+          <summary>A shortcut clashes with a site's own keys.</summary>
+          <p>Change it or turn it off in the options. The frame keys <kbd>,</kbd> and <kbd>.</kbd> only act on a paused video, so sites that use them while playing keep them.</p>
+        </details>
+        <details>
+          <summary>Can I use the keys without the bar?</summary>
+          <p>Yes. Hide the bar on every site, or only on the ones you list. The keys, the pop-out and the short speed messages keep working.</p>
+        </details>
+        <details>
+          <summary>Which browsers does it work in?</summary>
+          <p>Desktop Chrome, version 116 or later. It doesn't work in mobile browsers.</p>
+        </details>
+        <details>
+          <summary>Something doesn't work on a site.</summary>
+          <p>Players vary a lot, so please <a href="https://github.com/spite/video-qol/issues">open an issue</a> with the site's address. After the extension updates, reload your open tabs once as well.</p>
+        </details>
+      </div>
+    </section>
+
+    <section id="install">
+      <div class="wrap">
+        <h2>Install</h2>
+        <p class="section-lede">Free, and it takes a few seconds.</p>
+        <div class="install">
+          <div class="card">
+            <h3>Chrome Web Store</h3>
+            <p>The easiest way, with automatic updates.</p>
+            <span class="soon">Coming soon</span>
+          </div>
+          <div class="card">
+            <h3>From the source</h3>
+            <p>For trying the latest version before it reaches the store.</p>
+            <ol>
+              <li>Download the code from <a href="https://github.com/spite/video-qol">GitHub</a> (Code → Download ZIP) and unzip it.</li>
+              <li>Open <code>chrome://extensions</code> and turn on <strong>Developer mode</strong>.</li>
+              <li>Click <strong>Load unpacked</strong> and pick the unzipped folder.</li>
+            </ol>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="final">
+      <div class="wrap">
+        <h2>Watch at <span class="speed" id="speed">1×</span></h2>
+        <p class="section-lede">Or any speed you like, on every site.</p>
+        <div class="actions">
+          <a class="btn btn-primary" href="#install">Install</a>
+          <a class="btn btn-ghost" href="https://github.com/spite/video-qol">View on GitHub</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <span>Made by <a href="https://github.com/spite">Jaume Sanchez</a></span>
+      <span class="links">
+        <a href="https://github.com/spite/video-qol">GitHub</a>
+        <a href="https://github.com/spite/video-qol/blob/main/PRIVACY.md">Privacy policy</a>
+        <a href="https://github.com/spite/video-qol/issues">Report a problem</a>
+      </span>
+      <span class="disclaimer">Video QoL is not affiliated with or endorsed by Google, YouTube or Netflix.</span>
+    </div>
+  </footer>
+
+  <script>
+    const demo = document.getElementById('demo');
+    const captions = {
+      speed: 'Hover any video for the bar',
+      frames: 'Full-resolution frames, one key',
+      popout: 'Floats when you switch tabs',
+      options: 'Speeds per site, your own keys',
+    };
+    const tabs = [...demo.querySelectorAll('[role=tab]')];
+    const select = (name) => {
+      for (const t of tabs) t.setAttribute('aria-selected', String(t.dataset.tab === name));
+      for (const img of demo.querySelectorAll('img')) img.classList.toggle('on', img.dataset.tab === name);
+      demo.querySelector('.status').textContent = captions[name];
+    };
+    tabs.forEach((t, i) => {
+      t.addEventListener('click', () => select(t.dataset.tab));
+      t.addEventListener('keydown', (e) => {
+        const d = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+        if (!d) return;
+        const next = tabs[(i + d + tabs.length) % tabs.length];
+        next.focus();
+        select(next.dataset.tab);
+      });
+    });
+
+    // The closing headline cycles through speeds once it scrolls into view.
+    const speedEl = document.getElementById('speed');
+    const speeds = ['1×', '1.25×', '1.5×', '2×', '0.5×', '3×'];
+    let n = 0;
+    let timer = 0;
+    if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      new IntersectionObserver(([entry]) => {
+        clearInterval(timer);
+        if (entry.isIntersecting) timer = setInterval(() => { speedEl.textContent = speeds[++n % speeds.length]; }, 1200);
+      }).observe(speedEl);
+    }
+  </script>
+</body>
+</html>
