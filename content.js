@@ -25,9 +25,23 @@
     : location.hostname;
   let manualRate = false;
   let settings = VIDEO_QOL_SETTINGS.DEFAULTS;
+  let barHidden = false;
+  const keymapOf = (bindings) => new Map(Object.entries(bindings).filter(([, combo]) => combo).map(([act, combo]) => [combo, act]));
+  let keymap = keymapOf(VIDEO_QOL_SETTINGS.SHORTCUTS);
+
+  // Shortcuts and the bar's visibility follow the settings live; pip.js gets the bindings too.
+  function applySettings() {
+    barHidden = VIDEO_QOL_SETTINGS.hidesBar(SITE, settings);
+    barEl.hidden = barHidden;
+    const bindings = VIDEO_QOL_SETTINGS.shortcutsFor(settings);
+    keymap = keymapOf(bindings);
+    updateTitles(bindings);
+    document.dispatchEvent(new CustomEvent('videoqol-shortcuts', { detail: JSON.stringify(bindings) }));
+  }
 
   chrome.storage.sync.get(VIDEO_QOL_SETTINGS.DEFAULTS, (s) => {
     settings = s;
+    applySettings();
     desiredRate = VIDEO_QOL_SETTINGS.speedFor(SITE, s);
     document.querySelectorAll('video').forEach(attach);
     for (const v of document.querySelectorAll('video')) if (!v.paused) maybeAutoArm(v);
@@ -38,6 +52,7 @@
     if (area !== 'sync' || !extensionAlive()) return;
     chrome.storage.sync.get(VIDEO_QOL_SETTINGS.DEFAULTS, (s) => {
       settings = s;
+      applySettings();
       if (!manualRate) {
         desiredRate = VIDEO_QOL_SETTINGS.speedFor(SITE, s);
         for (const v of document.querySelectorAll('video')) if (attached.has(v)) v.playbackRate = desiredRate;
@@ -61,7 +76,7 @@
       button { all:unset; cursor:pointer; display:flex; align-items:center; justify-content:center;
         height:26px; padding:0 5px; border-radius:4px; }
       button svg { display:block; width:18px; height:18px; }
-      button[hidden] { display:none; }
+      button[hidden], .bar[hidden] { display:none; }
       button:hover { background:rgba(255,255,255,.2); }
       button.on { background:rgba(80,160,255,.65); }
       .rate { min-width:3.4em; text-align:center; }
@@ -69,21 +84,35 @@
         border-radius:5px; background:rgba(0,0,0,.75); color:#fff; font:12px system-ui, sans-serif;
         opacity:0; transition:opacity .2s; }
       .toast.show { opacity:1; }
+      .bar[hidden] ~ .toast { top:0; }
     </style>
     <div class="bar">
-      <button data-act="slower" data-icon="minus" title="Slower  ["></button>
-      <button data-act="reset" class="rate" title="Toggle 1×  \\">1×</button>
-      <button data-act="faster" data-icon="plus" title="Faster  ]"></button>
-      <button data-act="shot" data-icon="camera" title="Screenshot  Alt+S"></button>
-      <button data-act="download" data-icon="download" class="dl" title="Download video"></button>
-      <button data-act="pip" class="pip" title="Pop out when switching tabs  Alt+P (now: Alt+Shift+P)" data-icon="popout"></button>
+      <button data-act="slower" data-icon="minus"></button>
+      <button data-act="reset" class="rate">1×</button>
+      <button data-act="faster" data-icon="plus"></button>
+      <button data-act="shot" data-icon="camera"></button>
+      <button data-act="download" data-icon="download" class="dl"></button>
+      <button data-act="pip" class="pip" data-icon="popout"></button>
     </div>
     <div class="toast"></div>`;
+  const barEl = root.querySelector('.bar');
   const rateLabel = root.querySelector('.rate');
   const toastEl = root.querySelector('.toast');
   const pipBtn = root.querySelector('.pip');
   const dlBtn = root.querySelector('.dl');
   root.querySelectorAll('[data-icon]').forEach((b) => b.append(VIDEO_QOL_ICONS(document, b.dataset.icon)));
+
+  const TITLES = { slower: 'Slower', reset: 'Toggle 1×', faster: 'Faster', shot: 'Screenshot', download: 'Download video' };
+  function updateTitles(bindings) {
+    const key = (act) => VIDEO_QOL_SETTINGS.comboLabel(bindings[act]);
+    for (const b of root.querySelectorAll('[data-act]')) {
+      const act = b.dataset.act;
+      if (TITLES[act]) b.title = key(act) ? `${TITLES[act]}  ${key(act)}` : TITLES[act];
+    }
+    const now = key('popout') ? ` (now: ${key('popout')})` : '';
+    pipBtn.title = `Pop out when switching tabs${key('pip') ? '  ' + key('pip') : ''}${now}`;
+  }
+  updateTitles(VIDEO_QOL_SETTINGS.SHORTCUTS);
 
   root.querySelector('.bar').addEventListener('click', (e) => {
     const act = e.target.closest('button')?.dataset.act;
@@ -265,8 +294,13 @@
       if (Math.abs(video.playbackRate - desiredRate) > 1e-3) video.playbackRate = desiredRate;
     };
     // Sites often reset the rate when a new source loads; reassert ours.
-    video.addEventListener('loadedmetadata', () => { frameDur.delete(video); apply(); });
+    let settling = 0;
+    const settle = () => { settling = performance.now(); };
+    video.addEventListener('loadstart', settle);
+    video.addEventListener('emptied', settle);
+    video.addEventListener('loadedmetadata', () => { frameDur.delete(video); settle(); apply(); });
     video.addEventListener('play', () => {
+      settle();
       apply();
       if (!frameDur.has(video)) sampleFrameRate(video);
       checkPage();
@@ -275,7 +309,15 @@
     video.addEventListener('loadstart', checkPage);
     video.addEventListener('volumechange', () => maybeAutoArm(video));
     if (!frameDur.has(video)) sampleFrameRate(video);
-    video.addEventListener('ratechange', () => { if (video === activeVideo) updateLabel(); });
+    // A speed picked in the site's own menu, just after a click, becomes the page's speed instead of being undone.
+    video.addEventListener('ratechange', () => {
+      if (Math.abs(video.playbackRate - desiredRate) > 1e-3 && performance.now() - settling > 1000
+        && navigator.userActivation?.isActive && video.readyState >= 1) {
+        desiredRate = video.playbackRate;
+        manualRate = true;
+      }
+      if (video === activeVideo) updateLabel();
+    });
     apply();
   }
 
@@ -319,7 +361,10 @@
     requestAnimationFrame(() => {
       moveQueued = false;
       const v = videoAt(e.clientX, e.clientY);
-      if (v) { attach(v); showOverlay(v); }
+      if (!v) return;
+      attach(v);
+      if (!barHidden) return showOverlay(v);
+      if (v !== activeVideo) { activeVideo = v; updateLabel(); }
     });
   }, { capture: true, passive: true });
 
@@ -339,10 +384,16 @@
     toast(`Speed ${formatRate(rate)}`, video);
   }
 
+  // Next multiple of STEP up or down, so speeds stay on the grid after the minimum or a site's own speed.
+  function stepRate(rate, dir) {
+    const n = dir > 0 ? Math.floor(rate / STEP + 1e-6) + 1 : Math.ceil(rate / STEP - 1e-6) - 1;
+    return n * STEP;
+  }
+
   function run(act, video) {
     switch (act) {
-      case 'slower': setRate(video, video.playbackRate - STEP); break;
-      case 'faster': setRate(video, video.playbackRate + STEP); break;
+      case 'slower': setRate(video, stepRate(video.playbackRate, -1)); break;
+      case 'faster': setRate(video, stepRate(video.playbackRate, 1)); break;
       case 'reset': {
         const cur = video.playbackRate;
         if (Math.abs(cur - 1) < 1e-3) setRate(video, previousRate);
@@ -439,7 +490,10 @@
   }
 
   function toggleAutoPip(video) {
-    if (window !== window.top) return toast('Pop-out only works for videos in the main page', video);
+    if (window !== window.top) {
+      const now = VIDEO_QOL_SETTINGS.comboLabel(VIDEO_QOL_SETTINGS.shortcutsFor(settings).popout);
+      return toast(`Embedded videos can't pop out on tab switch${now ? `; ${now} pops it out now` : ''}`, video);
+    }
     if (armedVideo === video) {
       disarm();
       declinedPage = pageKey();
@@ -452,9 +506,20 @@
   }
 
   function popOut(video) {
-    if (window !== window.top) return toast('Pop-out only works for videos in the main page', video);
+    if (window !== window.top) return nativePip(video);
     pipVideo = video;
     video.dispatchEvent(new CustomEvent('videoqol-popout', { bubbles: true, composed: true }));
+  }
+
+  // Embedded frames can't open the pop-out window, so they use Chrome's own picture-in-picture.
+  async function nativePip(video) {
+    try {
+      if (document.pictureInPictureElement === video) return await document.exitPictureInPicture();
+      video.disablePictureInPicture = false;
+      await video.requestPictureInPicture();
+    } catch {
+      toast('This video can’t pop out', video);
+    }
   }
 
   // Buttons and keys inside the pop-out window arrive from pip.js.
@@ -525,6 +590,16 @@
     a.remove();
   }
 
+  const DRM_SHOT = 'This video is DRM-protected, so its frames can’t be saved';
+
+  // Protected video draws as black, so a black frame from a video with MediaKeys means DRM.
+  function isBlank(canvas) {
+    const probe = Object.assign(document.createElement('canvas'), { width: 16, height: 16 });
+    const g = probe.getContext('2d', { willReadFrequently: true });
+    g.drawImage(canvas, 0, 0, 16, 16);
+    return g.getImageData(0, 0, 16, 16).data.every((v, i) => i % 4 === 3 || v < 8);
+  }
+
   async function screenshot(video) {
     if (!video.videoWidth) return toast('No frame to capture yet', video);
     const name = fileName(video);
@@ -533,6 +608,7 @@
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
       canvas.getContext('2d').drawImage(video, 0, 0);
+      if (video.mediaKeys && isBlank(canvas)) return toast(DRM_SHOT, video);
       const blob = await new Promise((res, rej) => {
         try { canvas.toBlob((b) => (b ? res(b) : rej(new Error('empty'))), 'image/png'); } catch (e) { rej(e); }
       });
@@ -541,6 +617,7 @@
       setTimeout(() => URL.revokeObjectURL(url), 10000);
       toast(`Saved ${video.videoWidth}×${video.videoHeight} frame`, video);
     } catch {
+      if (video.mediaKeys) return toast(DRM_SHOT, video);
       screenshotFromTab(video, name);
     }
   }
@@ -569,17 +646,8 @@
 
   // ---------- keyboard ----------
 
-  const KEYS = {
-    '[': 'slower',
-    ']': 'faster',
-    '\\': 'reset',
-    ',': 'frameBack',
-    '.': 'frameFwd',
-  };
-  const ALT_CODES = { KeyS: 'shot', KeyP: 'pip', Comma: 'back5', Period: 'fwd5' };
   // Frame keys only act on a paused video, so sites keep , and . while playing (X uses . for new posts).
   const PAUSED_ONLY = new Set(['frameBack', 'frameFwd']);
-  const ALT_SHIFT_CODES = { KeyP: 'popout' };
 
   function isTyping(e) {
     const el = e.composedPath()[0];
@@ -588,10 +656,8 @@
   }
 
   window.addEventListener('keydown', (e) => {
-    if (e.ctrlKey || e.metaKey || isTyping(e)) return;
-    const act = e.altKey
-      ? (e.shiftKey ? ALT_SHIFT_CODES : ALT_CODES)[e.code]
-      : (!e.shiftKey && KEYS[e.key]);
+    if (isTyping(e)) return;
+    const act = keymap.get(VIDEO_QOL_SETTINGS.comboFromEvent(e));
     if (!act) return;
     const video = pickVideo();
     if (!video || (PAUSED_ONLY.has(act) && !video.paused)) return;

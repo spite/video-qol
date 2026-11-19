@@ -21,9 +21,9 @@ Hover any video to get a small control bar:
 • Frame by frame: step one frame at a time while paused, or jump 5 seconds.
 • Screenshots: save the exact frame you're looking at as a full-resolution PNG.
 • Downloads: save videos that play from a single file.
-• Pop-out player: arm a video, or list sites that arm automatically, and it floats in its own window when you switch tabs, with play/pause, seek, speed, screenshot and fullscreen controls, plus subtitles on Netflix and YouTube.
+• Pop-out player: arm a video, or list sites that arm automatically, and it floats in its own window when you switch tabs, with play/pause, seek, volume, speed, screenshot and fullscreen controls, plus subtitles on Netflix and YouTube.
 
-Keyboard shortcuts work on every site:
+Keyboard shortcuts work on every site, and you can change any of them:
 [ and ] — slower / faster
 \ — toggle 1× and your last speed
 , and . — previous / next frame (while paused)
@@ -32,17 +32,20 @@ Alt+S — screenshot
 Alt+P — pop out when switching tabs
 Alt+Shift+P — pop out now
 
-Shortcuts are ignored while you type, and the control bar stays out of the way of menus and pop-ups that cover the video.
+Shortcuts are ignored while you type, and the control bar stays out of the way of menus and pop-ups that cover the video. Prefer keys only? Hide the bar everywhere or on chosen sites.
 
 No tracking, no accounts, no data collected.
 
 Note: streamed and DRM-protected videos (YouTube, Netflix and similar) can't be downloaded; the download button only appears when there is a file to save.
 
-## Graphics to prepare
+## Graphics
 
-- **Store icon:** `icons/icon128.png` (already in the package).
-- **Screenshots:** at least one, 1280×800 or 640×400 PNG/JPEG. Suggested: the control bar on a video, the pop-out window with controls, and the speed toast.
-- **Small promo tile** (optional): 440×280.
+Made by `node store/make-assets.mjs`, which captures the extension's real UI from headless Chromium on a demo page. Upload from `store/images/`:
+
+- **Store icon:** `icons/icon128.png` (96×96 artwork with 16 px padding, as the store asks).
+- **Screenshots** (1280×800, in this order): `screenshot-1-speed.png`, `screenshot-2-frames.png`, `screenshot-3-popout.png`, `screenshot-4-options.png`.
+- **Small promo tile** (440×280): `promo-small-440x280.png`.
+- **Marquee promo tile** (1400×560): `marquee-1400x560.png`.
 
 ## Privacy practices tab
 
@@ -51,7 +54,7 @@ Adds playback controls to videos on web pages: speed, screenshots, downloads and
 
 **Permission justifications:**
 
-- `storage`: Saves the user's settings (default speed and per-site speeds) in Chrome's synced storage.
+- `storage`: Saves the user's settings (speeds, sites, keyboard shortcuts) in Chrome's synced storage.
 - `downloads`: Saves a video file to the user's downloads when they click the download button.
 - Host permission `<all_urls>`: The controls must work on videos on any site the user visits. It is also required by `chrome.tabs.captureVisibleTab`, used to screenshot videos whose frames the site does not allow the extension to read directly.
 

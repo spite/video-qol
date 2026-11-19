@@ -56,6 +56,14 @@
 
   document.addEventListener('videoqol-toast', (e) => pip && pip.toast(String(e.detail)), true);
 
+  // The user's shortcut bindings, sent by content.js.
+  const S = VIDEO_QOL_SETTINGS;
+  let bindings = S.SHORTCUTS;
+  document.addEventListener('videoqol-shortcuts', (e) => {
+    try { bindings = { ...S.SHORTCUTS, ...JSON.parse(e.detail) }; } catch { /* malformed */ }
+  }, true);
+  const withKey = (text, act) => (bindings[act] ? `${text}  ${S.comboLabel(bindings[act])}` : text);
+
   document.addEventListener('visibilitychange', () => {
     if (armed || pip) dbg(`tab ${document.hidden ? 'hidden' : 'visible'} | armed: ${mediaState(armed)} | pop-out open: ${!!pip}`);
     if (!document.hidden && pip && pip.auto) pip.win.close();
@@ -185,7 +193,13 @@
     };
 
     const playBtn = btn('', 'Play/pause  Space', () => (video.paused ? video.play() : video.pause()));
-    const rateEl = btn('', 'Toggle 1×  \\', () => send('reset'));
+    const rateEl = btn('', withKey('Toggle 1×', 'reset'), () => send('reset'));
+    const muteBtn = btn('', 'Mute  M', () => { video.muted = !video.muted; });
+    const volumeEl = el('input', { type: 'range', className: 'volume', min: 0, max: 1, step: 0.05, title: 'Volume  ↑ ↓' });
+    volumeEl.addEventListener('input', () => {
+      video.volume = Number(volumeEl.value);
+      video.muted = video.volume === 0;
+    });
     const toastEl = el('div', { className: 'toast' });
     const timeEl = el('span', { className: 'time' });
     const bufferedEl = el('div', { className: 'buffered' });
@@ -201,11 +215,14 @@
       btn(icon('forward10'), 'Forward 10s  →', () => { video.currentTime += 10; }),
       timeEl,
       el('span', { className: 'sep' }),
-      btn(icon('minus'), 'Slower  [', () => send('slower')),
-      rateEl,
-      btn(icon('plus'), 'Faster  ]', () => send('faster')),
+      muteBtn,
+      volumeEl,
       el('span', { className: 'sep' }),
-      btn(icon('camera'), 'Screenshot  Alt+S', () => send('shot')),
+      btn(icon('minus'), withKey('Slower', 'slower'), () => send('slower')),
+      rateEl,
+      btn(icon('plus'), withKey('Faster', 'faster'), () => send('faster')),
+      el('span', { className: 'sep' }),
+      btn(icon('camera'), withKey('Screenshot', 'shot'), () => send('shot')),
       btn(icon('fullscreen'), 'Fullscreen in the tab  F', () => goFullscreen()),
       btn(icon('close'), 'Close and put the video back', () => win.close()),
     );
@@ -216,8 +233,15 @@
       bar.classList.toggle('pinned', video.ended);
     };
     const syncRate = () => { rateEl.textContent = `${+video.playbackRate.toFixed(2)}×`; };
+    const syncVolume = () => {
+      const silent = video.muted || video.volume === 0;
+      muteBtn.replaceChildren(icon(silent ? 'muted' : 'volume'));
+      muteBtn.title = silent ? 'Unmute  M' : 'Mute  M';
+      volumeEl.value = silent ? 0 : video.volume;
+    };
     syncPlay();
     syncRate();
+    syncVolume();
 
     // Moving a playing <video> between documents keeps it playing; a comment marks its way home.
     const placeholder = document.createComment('video-qol pip');
@@ -290,6 +314,7 @@
     video.addEventListener('ended', syncPlay);
     video.addEventListener('seeked', syncPlay);
     video.addEventListener('ratechange', syncRate);
+    video.addEventListener('volumechange', syncVolume);
 
     let toastTimer = 0;
     pip = {
@@ -303,25 +328,27 @@
       },
     };
 
+    const changeVolume = (delta) => {
+      video.volume = Math.min(1, Math.max(0, Math.round((video.volume + delta) * 20) / 20));
+      video.muted = video.volume === 0;
+      pip.toast(`Volume ${Math.round(video.volume * 100)}%`);
+    };
+
+    // The user's shortcuts first (the pop-out key closes the window), then the window's own keys.
     win.addEventListener('keydown', (e) => {
-      if (e.ctrlKey || e.metaKey) return;
+      if (e.ctrlKey || e.metaKey || e.target === volumeEl && e.key.startsWith('Arrow')) return;
+      const combo = S.comboFromEvent(e);
+      const act = Object.keys(bindings).find((a) => bindings[a] && bindings[a] === combo);
       let handled = true;
-      if (e.altKey) {
-        if (e.code === 'KeyS') send('shot');
-        else if (e.code === 'Comma') send('back5');
-        else if (e.code === 'Period') send('fwd5');
-        else handled = false;
-      } else if (e.key === ' ' || e.key === 'k') {
-        video.paused ? video.play() : video.pause();
-      } else if (e.key === 'ArrowLeft') {
-        video.currentTime -= 5;
-      } else if (e.key === 'ArrowRight') {
-        video.currentTime += 5;
-      } else if (e.key === '[') send('slower');
-      else if (e.key === ']') send('faster');
-      else if (e.key === '\\') send('reset');
-      else if (e.key === ',') send('frameBack');
-      else if (e.key === '.') send('frameFwd');
+      if (act === 'popout') win.close();
+      else if (act) send(act);
+      else if (e.altKey || e.shiftKey && e.key.length > 1) handled = false;
+      else if (e.key === ' ' || e.key === 'k') video.paused ? video.play() : video.pause();
+      else if (e.key === 'ArrowLeft') video.currentTime -= 10;
+      else if (e.key === 'ArrowRight') video.currentTime += 10;
+      else if (e.key === 'ArrowUp') changeVolume(0.1);
+      else if (e.key === 'ArrowDown') changeVolume(-0.1);
+      else if (e.key === 'm' || e.key === 'M') video.muted = !video.muted;
       else if (e.key === 'f' || e.key === 'F') goFullscreen();
       else handled = false;
       if (handled) e.preventDefault();
@@ -339,6 +366,7 @@
       video.removeEventListener('ended', syncPlay);
       video.removeEventListener('seeked', syncPlay);
       video.removeEventListener('ratechange', syncRate);
+      video.removeEventListener('volumechange', syncVolume);
       video.removeEventListener('dblclick', goFullscreen);
       if (placeholder.isConnected) {
         placeholder.replaceWith(video);
@@ -399,6 +427,8 @@
       min-width:32px; height:32px; padding:0 4px; box-sizing:border-box; border-radius:5px; }
     button svg { display:block; width:20px; height:20px; }
     button:hover { background:rgba(255,255,255,.2); }
+    .volume { width:64px; margin:0 4px; accent-color:#fff; cursor:pointer; }
+    @media (max-width: 520px) { .volume { display:none; } }
     .sep { width:1px; height:16px; margin:0 4px; background:rgba(255,255,255,.3); }
     .captions { position:fixed; left:4%; right:4%; bottom:6%; text-align:center; pointer-events:none;
       transition:bottom .2s; }

@@ -51,8 +51,20 @@
   .error:empty { display: none; }
   kbd { font: 12px/1 ui-monospace, monospace; background: var(--bg); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 3px 6px; }
   .keys td { padding: 6px 0; border-top: 1px solid var(--line); }
-  .keys tr:first-child td { border-top: 0; }
-  .keys td:first-child { width: 45%; }
+  .keys tbody:first-child tr:first-child td { border-top: 0; }
+  label.check { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+  label.check input { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); }
+  .sublabel { font-weight: 600; margin: 0 0 4px; }
+  .shortcut { display: inline-flex; gap: 4px; align-items: center; min-height: 30px; min-width: 120px; padding: 3px 8px;
+    background: var(--input); border: 1px solid var(--line); color: var(--text); }
+  .shortcut:hover { border-color: var(--accent); }
+  .shortcut.recording { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; color: var(--muted); }
+  .shortcut .none { color: var(--muted); }
+  .keys td.act { width: auto; }
+  .keys td.key { width: 1%; white-space: nowrap; }
+  .keys .fixed td.key { padding-left: 9px; }
+  .reset { margin-top: 12px; background: none; border: 1px solid var(--line); color: var(--text); padding: 6px 12px; }
+  .reset:hover { border-color: var(--accent); }
   #status { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 6px 14px; border-radius: 20px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; }
   #status.show { opacity: 1; }
   @media (max-width: 480px) { td.speed-cell { width: 82px; } .speed { width: 70px; } }
@@ -91,7 +103,7 @@
 
   <section>
     <h2>Pop out on tab switch</h2>
-    <p class="hint">On these sites the main video is armed automatically when it starts playing with sound, so it pops out when you switch tabs. Elsewhere, arm a video with the bar's pop-out button or <kbd>Alt</kbd>+<kbd>P</kbd>. Arming ends when the page moves on to another video.</p>
+    <p class="hint">On these sites the main video is armed automatically when it starts playing with sound, so it pops out when you switch tabs. Elsewhere, arm a video with the bar's pop-out button or its shortcut below. Arming ends when the page moves on to another video.</p>
     <table>
       <thead><tr><th>Site</th><th></th></tr></thead>
       <tbody id="arm-sites"></tbody>
@@ -103,18 +115,32 @@
   </section>
 
   <section>
-    <h2>Keyboard shortcuts</h2>
-    <p class="hint">They act on the video you last hovered, or the largest one on screen, and are ignored while you type. Speed changes made with keys last until the page reloads.</p>
-    <table class="keys">
-      <tr><td><kbd>[</kbd> <kbd>]</kbd></td><td>Slower / faster</td></tr>
-      <tr><td><kbd>\</kbd></td><td>Toggle 1× and the last speed</td></tr>
-      <tr><td><kbd>,</kbd> <kbd>.</kbd></td><td>Previous / next frame, while paused</td></tr>
-      <tr><td><kbd>Alt</kbd>+<kbd>,</kbd> <kbd>Alt</kbd>+<kbd>.</kbd></td><td>Back / forward 5 seconds</td></tr>
-      <tr><td><kbd>Alt</kbd>+<kbd>S</kbd></td><td>Save the current frame</td></tr>
-      <tr><td><kbd>Alt</kbd>+<kbd>P</kbd></td><td>Pop out when switching tabs</td></tr>
-      <tr><td><kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd></td><td>Pop out now</td></tr>
-      <tr><td><kbd>F</kbd> or double-click, in the pop-out</td><td>Back to the tab, fullscreen</td></tr>
+    <h2>Control bar</h2>
+    <p class="hint">Where the bar stays hidden, keyboard shortcuts and the pop-out still work, and speed changes still show a short message.</p>
+    <label class="check"><input type="checkbox" id="hide-everywhere"> Hide the control bar on every site</label>
+    <p class="sublabel">Hide it on these sites</p>
+    <table>
+      <tbody id="hide-sites"></tbody>
     </table>
+    <div class="empty" id="hide-empty">No sites yet.</div>
+    <div class="error" id="hide-error"></div>
+    <button class="add" id="add-hide" type="button">Add site</button>
+  </section>
+
+  <section>
+    <h2>Keyboard shortcuts</h2>
+    <p class="hint">They act on the video you last hovered, or the largest one on screen, and are ignored while you type. Speed changes made with keys last until the page reloads. Click a shortcut and press new keys to change it; <kbd>Backspace</kbd> turns it off, <kbd>Esc</kbd> cancels.</p>
+    <table class="keys">
+      <tbody id="shortcuts"></tbody>
+      <tbody>
+        <tr class="fixed"><td class="act">Play / pause, in the pop-out</td><td class="key"><kbd>Space</kbd></td></tr>
+        <tr class="fixed"><td class="act">Back / forward 10 seconds, in the pop-out</td><td class="key"><kbd>←</kbd> <kbd>→</kbd></td></tr>
+        <tr class="fixed"><td class="act">Volume and mute, in the pop-out</td><td class="key"><kbd>↑</kbd> <kbd>↓</kbd> <kbd>M</kbd></td></tr>
+        <tr class="fixed"><td class="act">Back to the tab, fullscreen, from the pop-out</td><td class="key"><kbd>F</kbd> or double-click</td></tr>
+      </tbody>
+    </table>
+    <div class="error" id="keys-error"></div>
+    <button class="reset" id="reset-keys" type="button">Reset shortcuts</button>
   </section>
 </main>
 <div id="status" role="status">Saved</div>

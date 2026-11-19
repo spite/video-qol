@@ -3,6 +3,10 @@ const $ = (sel) => document.querySelector(sel);
 const defaultInput = $('#default-speed');
 const sitesBody = $('#sites');
 const armBody = $('#arm-sites');
+const hideBody = $('#hide-sites');
+const hideEverywhere = $('#hide-everywhere');
+const keysBody = $('#shortcuts');
+let shortcuts = {};
 
 function parseSpeed(input) {
   const v = parseFloat(input.value);
@@ -58,9 +62,11 @@ function addRow(site = '', speed = 1.5) {
 function updateEmpty() {
   $('#empty').hidden = sitesBody.children.length > 0;
   $('#arm-empty').hidden = armBody.children.length > 0;
+  $('#hide-empty').hidden = hideBody.children.length > 0;
 }
 
-function addArmRow(site = '') {
+// A row in a plain list of sites (auto-arm, hidden bar).
+function addListRow(body, site = '') {
   const tr = document.createElement('tr');
   const siteInput = Object.assign(document.createElement('input'), {
     type: 'text', value: site, placeholder: 'youtube.com', spellcheck: false, ariaLabel: 'Site',
@@ -78,15 +84,15 @@ function addArmRow(site = '') {
   const delCell = Object.assign(document.createElement('td'), { className: 'del' });
   delCell.append(remove);
   tr.append(siteCell, delCell);
-  armBody.append(tr);
+  body.append(tr);
   updateEmpty();
   return siteInput;
 }
 
-function collectArmSites() {
+function collectSiteList(body, errorEl) {
   const sites = [];
   const problems = [];
-  for (const input of armBody.querySelectorAll('input')) {
+  for (const input of body.querySelectorAll('input')) {
     const raw = input.value.trim();
     const site = S.normalizeSite(raw);
     input.classList.toggle('invalid', !!raw && !site);
@@ -94,9 +100,77 @@ function collectArmSites() {
     if (!site) problems.push(`“${raw}” isn't a site name.`);
     else if (!sites.includes(site)) sites.push(site);
   }
-  $('#arm-error').textContent = problems[0] || '';
+  errorEl.textContent = problems[0] || '';
   return sites;
 }
+
+// ---------- shortcuts ----------
+
+const keyChips = (combo) => {
+  if (!combo) return [Object.assign(document.createElement('span'), { className: 'none', textContent: 'Off' })];
+  return S.comboKeys(combo).flatMap((k, i) => {
+    const kbd = Object.assign(document.createElement('kbd'), { textContent: k });
+    return i ? ['+', kbd] : [kbd];
+  });
+};
+
+function renderShortcuts() {
+  const bindings = S.shortcutsFor({ shortcuts });
+  keysBody.replaceChildren(...Object.keys(S.SHORTCUTS).map((act) => {
+    const tr = document.createElement('tr');
+    const name = Object.assign(document.createElement('td'), { className: 'act', textContent: S.SHORTCUT_LABELS[act] });
+    const button = Object.assign(document.createElement('button'), { type: 'button', className: 'shortcut', title: 'Click, then press the new keys' });
+    button.dataset.act = act;
+    button.append(...keyChips(bindings[act]));
+    button.addEventListener('click', () => record(button, act));
+    const cell = Object.assign(document.createElement('td'), { className: 'key' });
+    cell.append(button);
+    tr.append(name, cell);
+    return tr;
+  }));
+}
+
+function record(button, act) {
+  if (button.classList.contains('recording')) return;
+  const error = $('#keys-error');
+  button.classList.add('recording');
+  button.replaceChildren('Press keys…');
+  const stop = () => {
+    button.removeEventListener('keydown', onKey);
+    button.removeEventListener('blur', stop);
+    renderShortcuts();
+  };
+  const onKey = (e) => {
+    if (e.key === 'Tab') return stop();
+    e.preventDefault();
+    if (e.key === 'Escape') { error.textContent = ''; return stop(); }
+    let combo;
+    if ((e.key === 'Backspace' || e.key === 'Delete') && !e.altKey && !e.shiftKey) combo = '';
+    else {
+      if (e.ctrlKey || e.metaKey) { error.textContent = 'Ctrl and ⌘ shortcuts belong to the browser; use Alt or a single key.'; return; }
+      combo = S.comboFromEvent(e);
+      if (!combo) return;
+      const bindings = S.shortcutsFor({ shortcuts });
+      const taken = Object.keys(bindings).find((a) => a !== act && bindings[a] === combo);
+      if (taken) { error.textContent = `${S.comboLabel(combo)} is already used for “${S.SHORTCUT_LABELS[taken]}”.`; return; }
+    }
+    error.textContent = '';
+    if (combo === S.SHORTCUTS[act]) delete shortcuts[act];
+    else shortcuts[act] = combo;
+    stop();
+    scheduleSave();
+    keysBody.querySelector(`[data-act="${act}"]`)?.focus();
+  };
+  button.addEventListener('keydown', onKey);
+  button.addEventListener('blur', stop);
+}
+
+$('#reset-keys').addEventListener('click', () => {
+  shortcuts = {};
+  $('#keys-error').textContent = '';
+  renderShortcuts();
+  scheduleSave();
+});
 
 // Reads the form; returns null for any field that is invalid, so nothing half-typed gets saved.
 function collect() {
@@ -136,7 +210,13 @@ function scheduleSave() {
 let statusTimer = 0;
 async function save() {
   const { defaultSpeed, siteSpeeds } = collect();
-  const data = { siteSpeeds, autoArmSites: collectArmSites() };
+  const data = {
+    siteSpeeds,
+    autoArmSites: collectSiteList(armBody, $('#arm-error')),
+    hideBarSites: collectSiteList(hideBody, $('#hide-error')),
+    hideBarEverywhere: hideEverywhere.checked,
+    shortcuts,
+  };
   if (defaultSpeed !== null) data.defaultSpeed = defaultSpeed;
   await chrome.storage.sync.set(data);
   const status = $('#status');
@@ -147,12 +227,18 @@ async function save() {
 
 defaultInput.addEventListener('input', scheduleSave);
 $('#add').addEventListener('click', () => addRow().focus());
-$('#add-arm').addEventListener('click', () => addArmRow().focus());
+$('#add-arm').addEventListener('click', () => addListRow(armBody).focus());
+$('#add-hide').addEventListener('click', () => addListRow(hideBody).focus());
+hideEverywhere.addEventListener('change', scheduleSave);
 $('#open-chrome-pip').addEventListener('click', () => chrome.tabs.create({ url: 'chrome://settings/content/autoPictureInPicture' }));
 
 chrome.storage.sync.get(S.DEFAULTS).then((s) => {
   defaultInput.value = s.defaultSpeed;
   for (const [site, speed] of Object.entries(s.siteSpeeds).sort(([a], [b]) => a.localeCompare(b))) addRow(site, speed);
-  for (const site of s.autoArmSites) addArmRow(site);
+  for (const site of s.autoArmSites) addListRow(armBody, site);
+  for (const site of s.hideBarSites) addListRow(hideBody, site);
+  hideEverywhere.checked = !!s.hideBarEverywhere;
+  shortcuts = { ...s.shortcuts };
+  renderShortcuts();
   updateEmpty();
 });

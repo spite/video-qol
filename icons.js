@@ -27,6 +27,14 @@ var VIDEO_QOL_ICONS = (() => {
     forward10: [['g', { transform: 'matrix(-1 0 0 1 24 0)' }, ...seekArc], seekText],
     download: [['path', { d: 'M12 4.5v10M7.5 10l4.5 4.5 4.5-4.5M5 19h14' }]],
     fullscreen: [['path', { d: 'M4.5 9V4.5H9M15 4.5h4.5V9M19.5 15v4.5H15M9 19.5H4.5V15' }]],
+    volume: [
+      ['path', { d: 'M4 9.5h3.5L12 5.5v13l-4.5-4H4z' }],
+      ['path', { d: 'M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11' }],
+    ],
+    muted: [
+      ['path', { d: 'M4 9.5h3.5L12 5.5v13l-4.5-4H4z' }],
+      ['path', { d: 'M16 9.5l5 5M21 9.5l-5 5' }],
+    ],
     close: [['path', { d: 'M6.5 6.5l11 11M17.5 6.5l-11 11' }]],
   };
 

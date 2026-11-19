@@ -20,7 +20,7 @@ const PROFILE = `${T}/profile`;
 
 fs.mkdirSync(`${T}/site`);
 fs.mkdirSync(`${T}/dl`);
-fs.copyFileSync(`${EXT}/test/site/index.html`, `${T}/site/index.html`);
+for (const f of fs.readdirSync(`${EXT}/test/site`)) fs.copyFileSync(`${EXT}/test/site/${f}`, `${T}/site/${f}`);
 const ff = (args) => execFileSync('ffmpeg', ['-v', 'error', '-f', 'lavfi', ...args], { stdio: 'inherit' });
 ff(['-i', 'testsrc2=size=640x360:rate=25', '-t', '6', '-c:v', 'libvpx', '-b:v', '600k', '-an', `${T}/site/file.webm`]);
 ff(['-i', 'testsrc=size=640x360:rate=25', '-t', '6', '-c:v', 'libvpx', '-b:v', '600k', '-an', '-dash', '1', `${T}/site/stream.webm`]);
@@ -150,6 +150,7 @@ async function barButtons() {
       const get = (k) => (a.indexOf(k) >= 0 ? a[a.indexOf(k) + 1] : null);
       buttons[get('data-act')] = { nodeId: n.nodeId, hidden: a.includes('hidden'), cls: get('class') };
     }
+    if (n.nodeName === 'DIV' && n.attributes?.[n.attributes.indexOf('class') + 1] === 'bar') buttons.bar = { hidden: n.attributes.includes('hidden') };
     (n.children || []).forEach(walk);
   })(host.shadowRoots[0]);
   return buttons;
@@ -184,6 +185,18 @@ await key('\\', 'Backslash', 220);
 rate = await evaluate(`document.getElementById('file').playbackRate`);
 check('\\ again restores 0.75', rate === 0.75, String(rate));
 await key('\\', 'Backslash', 220);
+
+// 2a. speed steps stay on the 0.25 grid, through the minimum and back
+{
+  const r = () => evaluate(`document.getElementById('file').playbackRate`);
+  for (let i = 0; i < 4; i++) await key('[', 'BracketLeft', 219);
+  const low = await r();
+  await key(']', 'BracketRight', 221);
+  const up = await r();
+  for (let i = 0; i < 3; i++) await key(']', 'BracketRight', 221);
+  const back = await r();
+  check('speed steps down to the 0.06× minimum and back up on the grid', low === 0.0625 && up === 0.25 && back === 1, `${low} → ${up} → ${back}`);
+}
 
 // 2b. frame step and ±5s
 {
@@ -262,6 +275,22 @@ await sleep(3300);
 st = await barState();
 check('bar fades out after idle', st?.display === 'none', JSON.stringify(st));
 
+// 6b. a speed the site sets on its own is undone; one picked in its menu, right after a click, is kept
+{
+  await sleep(2200);   // let the activation from earlier key presses expire
+  const replayRate = (expr, userGesture) => send('Runtime.evaluate', { expression: expr, userGesture, awaitPromise: true }, S)
+    .then(() => sleep(1200))
+    .then(() => evaluate(`(async () => { const v = document.getElementById('file'); v.pause(); await v.play(); await new Promise((r) => setTimeout(r, 200)); return v.playbackRate; })()`));
+  const undone = await replayRate(`document.getElementById('file').playbackRate = 0.5`, false);
+  check('a rate the site sets by itself is undone on the next play', undone === 1, String(undone));
+  await sleep(1200);
+  const kept = await replayRate(`document.getElementById('file').playbackRate = 2`, true);
+  check('a rate picked in the site\'s own menu is kept', kept === 2, String(kept));
+  await move(200, 150);
+  await key('\\', 'Backslash', 220);
+  await move(10, 690);
+}
+
 // 7. arm button
 await move(200, 150);
 b = await barButtons();
@@ -276,7 +305,7 @@ const opened = await waitFor(`!!(window.documentPictureInPicture && documentPict
 check('Alt+Shift+P pops video into a document PiP window', opened, opened ? '' : 'documentPictureInPicture unavailable in headless?');
 if (opened) {
   const bar = await evaluate(`documentPictureInPicture.window.document.querySelectorAll('.bar button').length`);
-  check('pop-out window has its controls', bar === 9, String(bar));
+  check('pop-out window has its controls', bar === 10, String(bar));
   const seek = await evaluate(`(async () => {
     const w = documentPictureInPicture.window, d = w.document, v = d.querySelector('video');
     v.pause();
@@ -288,6 +317,27 @@ if (opened) {
   })()`);
   check('seek bar jumps to the clicked point', !seek.hidden && Math.abs(seek.t - seek.d / 2) < 0.3, JSON.stringify(seek));
   check('time readout shows position / duration', /^0:0[23] \/ 0:06$/.test(seek.time), seek.time);
+  const keys = await evaluate(`(async () => {
+    const w = documentPictureInPicture.window, d = w.document, v = d.querySelector('video');
+    const press = async (key, code) => { w.dispatchEvent(new w.KeyboardEvent('keydown', { key, code, bubbles: true })); await new Promise((r) => setTimeout(r, 150)); };
+    v.pause();
+    v.currentTime = 0;
+    await new Promise((r) => v.addEventListener('seeked', r, { once: true }));
+    await press('ArrowRight', 'ArrowRight');
+    const fwd = v.currentTime;
+    const wasMuted = v.muted;
+    await press('m', 'KeyM');
+    const toggled = v.muted !== wasMuted;
+    v.muted = false; v.volume = 0.5;
+    await press('ArrowUp', 'ArrowUp');
+    const vol = v.volume;
+    const slider = d.querySelector('input.volume');
+    const out = { fwd, toggled, vol, slider: !!slider && Number(slider.value) === vol };
+    v.muted = true;
+    return out;
+  })()`);
+  check('pop-out → seeks 10s like its button (to the end of this 6 s video)', keys.fwd > 5.5, JSON.stringify(keys));
+  check('pop-out M mutes, ↑ raises the volume, and the slider follows', keys.toggled && Math.abs(keys.vol - 0.6) < 1e-6 && keys.slider, JSON.stringify(keys));
   // PIP_SHOT=/path/to.png saves a screenshot of the pop-out window with its controls showing.
   if (process.env.PIP_SHOT) {
     await evaluate(`(() => { const d = documentPictureInPicture.window.document; d.querySelector('.bar').classList.add('pinned'); })()`);
@@ -442,6 +492,55 @@ if (opened) {
     }
     console.log(`      options screenshots: ${process.env.OPT_SHOT}-light.png / -dark.png`);
   }
+  // Shortcuts: rebinding one, conflicts, reset.
+  const pageRate = () => evaluate(`document.getElementById('file').playbackRate`);
+  const rebind = (act, k, code, altKey) => evalIn(O, `(() => { const b = document.querySelector('#shortcuts [data-act=${act}]'); b.focus(); b.click();
+    b.dispatchEvent(new KeyboardEvent('keydown', { key: ${JSON.stringify(k)}, code: ${JSON.stringify(code)}, altKey: ${altKey}, bubbles: true, cancelable: true })); })()`);
+  await rebind('faster', 'f', 'KeyF', true);
+  await sleep(900);
+  const keyStore = (await evalIn(O, `chrome.storage.sync.get('shortcuts')`)).shortcuts;
+  await move(200, 150);
+  const r0 = await pageRate();
+  await key('f', 'KeyF', 70, 1);
+  const r1 = await pageRate();
+  await key(']', 'BracketRight', 221);
+  const r2b = await pageRate();
+  check('a rebound shortcut works, and the old key no longer does', r1 === r0 + 0.25 && r2b === r1, JSON.stringify({ keyStore, r0, r1, r2b }));
+  await rebind('slower', '\\', 'Backslash', false);
+  const conflict = await evalIn(O, `document.querySelector('#keys-error').textContent`);
+  check('options refuse a key already used by another shortcut', /already used/.test(conflict), conflict);
+  await evalIn(O, `document.activeElement.blur(); document.querySelector('#reset-keys').click()`);
+  await sleep(900);
+  await key(']', 'BracketRight', 221);
+  check('reset shortcuts brings back the defaults', (await pageRate()) === r1 + 0.25, String(await pageRate()));
+
+  // Hiding the bar: everywhere, then per site; keys and their messages still work.
+  // The options tab put the page in the background, where hover handling waits for animation frames.
+  await send('Target.activateTarget', { targetId });
+  await evalIn(O, `document.querySelector('#hide-everywhere').click()`);
+  await sleep(900);
+  await move(10, 690);
+  await sleep(3300);
+  await move(200, 150);
+  const hiddenHover = await barState();
+  await key('[', 'BracketLeft', 219);
+  const toastShown = await barState();
+  const hiddenBar = (await barButtons()).bar;
+  check('hiding the bar everywhere: no bar on hover, speed message still shows', hiddenHover?.display !== 'block' && toastShown?.display === 'block' && hiddenBar?.hidden,
+    JSON.stringify({ hiddenHover, toastShown, hiddenBar }));
+  await evalIn(O, `document.querySelector('#hide-everywhere').click()`);
+  await evalIn(O, `(() => { document.querySelector('#add-hide').click(); const i = document.querySelector('#hide-sites tr:last-child input'); i.value = 'localhost'; i.dispatchEvent(new Event('input')); })()`);
+  await sleep(900);
+  await move(10, 690);
+  await sleep(3300);
+  await move(200, 150);
+  const siteHidden = await barState();
+  await evalIn(O, `document.querySelector('#hide-sites tr:last-child .remove').click()`);
+  await sleep(900);
+  await move(210, 150);
+  const shownAgain = await barState();
+  check('hiding the bar on one site, and showing it again', siteHidden?.display !== 'block' && shownAgain?.display === 'block', JSON.stringify({ siteHidden, shownAgain }));
+
   await evalIn(O, setField(`document.querySelector('#sites tr:last-child input[type=text]')`, 'not a site!'));
   await sleep(600);
   const err = await evalIn(O, `document.querySelector('#sites-error').textContent`);
@@ -488,6 +587,17 @@ if (opened) {
   await replay();
   check('…and the next video auto-arms again', await armed());
   await evaluate(`document.getElementById('file').muted = true`);
+}
+
+// 12. embedded videos pop out with Chrome's own picture-in-picture
+{
+  await click(220, 430);
+  await key('P', 'KeyP', 80, 1 | 8);
+  const inPip = await waitFor(`document.getElementById('embed').contentDocument.pictureInPictureElement?.id === 'v'`, 3000);
+  check('an embedded video pops out with Chrome\'s picture-in-picture', inPip);
+  await key('P', 'KeyP', 80, 1 | 8);
+  const closed = await waitFor(`!document.getElementById('embed').contentDocument.pictureInPictureElement`, 3000);
+  check('…and the same key closes it', closed);
 }
 
 const extErrors = errors.filter((e) => /chrome-extension|videoqol|VIDEO_QOL/i.test(e) || !/favicon/.test(e));

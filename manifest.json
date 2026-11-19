@@ -49,6 +49,7 @@
         "<all_urls>"
       ],
       "js": [
+        "settings.js",
         "icons.js",
         "pip.js"
       ],
