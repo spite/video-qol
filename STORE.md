@@ -11,6 +11,10 @@ Speed control, frame screenshots, downloads and a pop-out player with its own co
 
 **Category:** Productivity → Tools
 
+**Homepage URL:** https://spite.github.io/video-qol/
+
+**Support URL:** https://github.com/spite/video-qol/issues
+
 **Description:**
 
 Better controls for every video on the web.
@@ -62,7 +66,7 @@ Adds playback controls to videos on web pages: speed, screenshots, downloads and
 
 **Data usage:** The extension collects none of the listed data types. Check all three certifications (no selling or transferring data to third parties, no use unrelated to the single purpose, no use for creditworthiness or lending).
 
-**Privacy policy URL:** host `PRIVACY.md` somewhere public (for example the repository on GitHub, or a GitHub Pages site) and paste its URL.
+**Privacy policy URL:** https://github.com/spite/video-qol/blob/main/PRIVACY.md
 
 ## Review notes
 
